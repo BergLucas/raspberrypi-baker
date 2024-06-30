@@ -8,4 +8,14 @@ name = "baker"
 path = "src/main.rs"
 
 [dependencies]
+chrono = "0.4.38"
 clap = { version = "4.5.8", features = ["derive"] }
+dirs = "5.0.1"
+regex = "1.10.5"
+reqwest = { version = "0.12.5", features = ["blocking"] }
+scraper = "0.19.0"
+serde = { version = "1.0.203", features = ["derive"] }
+serde_json = "1.0.118"
+url = "2.5.2"
+xz2 = "0.1.7"
+zip = "2.1.3"
