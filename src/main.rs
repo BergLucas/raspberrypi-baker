@@ -2,6 +2,7 @@ use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
 mod images;
+mod mount;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]
