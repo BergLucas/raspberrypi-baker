@@ -111,18 +111,41 @@ pub(crate) fn parse_run<'a, E: ParseError<&'a str>>(
     let (tail, run) = kw_with_ws(i, "RUN")?;
     Ok((tail, Instruction::RUN(run.to_string())))
 }
+fn consume_eol<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
+    let (tail, _) = alt((tag("\r\n"), tag("\n")))(i)?;
+    Ok((tail, ""))
+}
+
+fn parse_tag<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
+    let (tail, (_, tag)) = tuple((tag(":"), till_eol))(i)?;
+    Ok((tail, tag))
+}
 
 pub(crate) fn parse_from<'a, E: ParseError<&'a str>>(
     i: &'a str,
 ) -> IResult<&'a str, FromClause, E> {
-    //TODO: parse tag and platform
-    let (tail, (_, _, image)) = tuple((tag("FROM"), comsume_ws, till_eol))(i)?;
+    let (tail, (_, _, line)) = tuple((tag("FROM"), comsume_ws, till_eol))(i)?;
+    let (img, pt) = opt(tuple((
+        tag("--platform"),
+        comsume_ws,
+        non_space,
+        comsume_ws,
+    )))(line)?;
+    let platform = pt.map(|(_, _, p, _)| p.to_string());
+    let (last, image) = take_till(|ch| eol(ch) || ch == ':')(img)?;
+    let tag = if !last.is_empty() {
+        let (_, tag) = parse_tag(last)?;
+        Some(tag.to_string())
+    } else {
+        None
+    };
+
     Ok((
         tail,
         FromClause {
             image: image.to_string(),
-            tag: None,
-            platform: None,
+            tag,
+            platform,
         },
     ))
 }
@@ -216,7 +239,21 @@ fn test_parse_env() {
 }
 
 #[test]
-fn test_parse_from() {
+fn test_parse_from_full_options() {
+    let input = "FROM --platform x86 ubuntu:latest\n";
+    let (_, res) = parse_from::<()>(input).unwrap();
+    assert_eq!(
+        res,
+        FromClause {
+            image: "ubuntu".to_string(),
+            tag: Some("latest".to_string()),
+            platform: Some("x86".to_string())
+        }
+    );
+}
+
+#[test]
+fn test_parse_from_no_options() {
     let input = "FROM ubuntu\n";
     let (_, res) = parse_from::<()>(input).unwrap();
     assert_eq!(
