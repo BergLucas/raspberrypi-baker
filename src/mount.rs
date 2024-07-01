@@ -1,4 +1,4 @@
-use std::{fs, thread::sleep, time::Duration};
+use std::{collections::BTreeMap, fs, thread::sleep, time::Duration};
 
 use glob::glob;
 use loopdev::{LoopControl, LoopDevice};
@@ -10,7 +10,7 @@ use crate::images::BakerImage;
 
 pub struct MountedBakerImage {
     loop_device: LoopDevice,
-    mount_points: Vec<Mount>,
+    mount_points: BTreeMap<String, Mount>,
 }
 
 impl MountedBakerImage {
@@ -58,15 +58,18 @@ impl MountedBakerImage {
 
                 let label = device
                     .property_value("ID_FS_LABEL_ENC")
-                    .ok_or("Failed to get device label")?;
+                    .ok_or("Failed to get device label")?
+                    .to_str()
+                    .ok_or("Failed to convert label to string")?
+                    .to_string();
 
-                let mount_point = mount_dir.path().join(label);
+                let mount_point = mount_dir.path().join(&label);
 
                 fs::create_dir_all(mount_point.as_path())?;
 
-                Ok(Mount::new(partition_device, mount_point)?)
+                Ok((label, Mount::new(partition_device, mount_point)?))
             })
-            .collect::<Result<Vec<Mount>, Box<dyn std::error::Error>>>()?;
+            .collect::<Result<BTreeMap<String, Mount>, Box<dyn std::error::Error>>>()?;
 
         Ok(MountedBakerImage {
             loop_device,
@@ -74,7 +77,7 @@ impl MountedBakerImage {
         })
     }
     pub fn unmount(self) -> Result<(), Box<dyn std::error::Error>> {
-        for mount in self.mount_points {
+        for mount in self.mount_points.values() {
             mount.unmount(UnmountFlags::DETACH)?;
         }
 
