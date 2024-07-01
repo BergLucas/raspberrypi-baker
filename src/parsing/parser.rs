@@ -25,7 +25,8 @@ impl Eq for FromClause {}
 impl Eq for File {}
 
 use nom::{
-    bytes::complete::{tag, take_while},
+    branch::alt,
+    bytes::complete::{tag, take_till, take_while},
     combinator::opt,
     error::ParseError,
     multi::many0,
@@ -55,8 +56,12 @@ fn non_space<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str
     take_while(|c| c != ' ')(i)
 }
 
+fn eol(ch: char) -> bool {
+    ch == '\n' || ch == '\r'
+}
+
 fn till_eol<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
-    let (tail, (line, _)) = tuple((take_while(|c| c != '\n'), opt(tag("\n"))))(i)?;
+    let (tail, (line, _)) = tuple((take_till(eol), opt(alt((tag("\r\n"), tag("\n"))))))(i)?;
     Ok((tail, line))
 }
 
@@ -90,14 +95,21 @@ pub(crate) fn parse_copy<'a, E: ParseError<&'a str>>(
 ) -> IResult<&'a str, Instruction, E> {
     let (paths, _) = tuple((nom::bytes::complete::tag("COPY"), comsume_ws))(i)?;
     let (tail, (src, dest)) = separated_pair(non_space, tag(" "), till_eol)(paths)?;
-    if !is_glob_pattern(src) || !is_glob_pattern(dest) {
-        return Err(nom::Err::Error(E::from_error_kind(
+    if !is_glob_pattern(src) || !is_glob_pattern(&dest) {
+        return Err(Err::Failure(E::from_error_kind(
             i,
-            nom::error::ErrorKind::Verify,
+            nom::error::ErrorKind::Fail,
         )));
     }
 
     Ok((tail, Instruction::COPY(src.to_string(), dest.to_string())))
+}
+
+pub(crate) fn parse_run<'a, E: ParseError<&'a str>>(
+    i: &'a str,
+) -> IResult<&'a str, Instruction, E> {
+    let (tail, run) = kw_with_ws(i, "RUN")?;
+    Ok((tail, Instruction::RUN(run.to_string())))
 }
 
 pub(crate) fn parse_from<'a, E: ParseError<&'a str>>(
@@ -115,6 +127,22 @@ pub(crate) fn parse_from<'a, E: ParseError<&'a str>>(
     ))
 }
 
+pub(crate) fn parse_env<'a, E: ParseError<&'a str>>(
+    i: &'a str,
+) -> IResult<&'a str, Instruction, E> {
+    let (tail, (_, _, envs)) = tuple((tag("ENV"), comsume_ws, till_eol))(i)?;
+    let envs = envs
+        .split_whitespace()
+        .map(|env| {
+            let mut env = env.split('=');
+            let key = env.next().unwrap().to_string();
+            let value = env.next().unwrap().to_string();
+            (key, value)
+        })
+        .collect();
+    Ok((tail, Instruction::ENV(envs)))
+}
+
 pub(crate) fn parse_instructions<'a, E: ParseError<&'a str>>(
     i: &'a str,
 ) -> IResult<&'a str, Vec<Instruction>, E> {
@@ -123,8 +151,8 @@ pub(crate) fn parse_instructions<'a, E: ParseError<&'a str>>(
         parse_user,
         parse_workdir,
         parse_copy,
-        //parse_run,
-        //parse_env,
+        parse_run,
+        parse_env,
     )))(i)
 }
 
@@ -165,6 +193,26 @@ fn test_parse_cmd() {
     let input = "CMD echo hello\n";
     let (_, res) = parse_cmd::<()>(input).unwrap();
     assert_eq!(res, Instruction::CMD("echo hello".to_string()));
+}
+
+#[test]
+fn test_parse_run() {
+    let input = "RUN echo hello\n";
+    let (_, res) = parse_run::<()>(input).unwrap();
+    assert_eq!(res, Instruction::RUN("echo hello".to_string()));
+}
+
+#[test]
+fn test_parse_env() {
+    let input = "ENV KEY1=VALUE1 KEY2=VALUE2";
+    let (_, res) = parse_env::<()>(input).unwrap();
+    assert_eq!(
+        res,
+        Instruction::ENV(vec![
+            ("KEY1".to_string(), "VALUE1".to_string()),
+            ("KEY2".to_string(), "VALUE2".to_string())
+        ])
+    );
 }
 
 #[test]
