@@ -1,4 +1,4 @@
-#[derive(PartialEq, Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     ENV(Vec<(String, String)>),
     RUN(String),
@@ -7,26 +7,30 @@ pub enum Instruction {
     USER(String),
     CMD(String),
 }
-use std::path::PathBuf;
 
-#[derive(Debug, PartialEq, Default)]
+#[derive(Default, Debug, Clone, PartialEq)]
 pub struct FromClause {
     pub image: String,
     pub tag: Option<String>,
     pub platform: Option<String>,
 }
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct File {
     pub from: FromClause,
     pub instructions: Vec<Instruction>,
 }
 
+impl Eq for Instruction {}
+impl Eq for FromClause {}
+impl Eq for File {}
+
 use nom::{
-    bytes::complete::{tag, take_till, take_while},
+    bytes::complete::{tag, take_while},
+    combinator::opt,
     error::ParseError,
     multi::many0,
     sequence::{separated_pair, tuple},
-    Err, IResult, Parser,
+    Err, IResult,
 };
 
 use glob::glob;
@@ -39,8 +43,8 @@ fn comsume_ws<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a st
 }
 
 fn kw_with_ws<'a, E: ParseError<&'a str>>(i: &'a str, kw: &'a str) -> IResult<&'a str, &'a str, E> {
-    let (_, (_, _, line)) = tuple((tag(kw), comsume_ws, till_eol))(i)?;
-    Ok((i, line))
+    let (tail, (_, _, line)) = tuple((tag(kw), comsume_ws, till_eol))(i)?;
+    Ok((tail, line))
 }
 
 fn is_glob_pattern(path: &str) -> bool {
@@ -52,59 +56,57 @@ fn non_space<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str
 }
 
 fn till_eol<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
-    take_while(|c| c != '\n')(i)
+    let (tail, (line, _)) = tuple((take_while(|c| c != '\n'), opt(tag("\n"))))(i)?;
+    Ok((tail, line))
 }
 
 ///
 /// Parsers
 ///
 
-fn parse_cmd<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
-    let (_, cmd) = kw_with_ws(i, "CMD")?;
-    Ok((i, Instruction::CMD(cmd.to_string())))
+pub(crate) fn parse_cmd<'a, E: ParseError<&'a str>>(
+    i: &'a str,
+) -> IResult<&'a str, Instruction, E> {
+    let (tail, cmd) = kw_with_ws(i, "CMD")?;
+    Ok((tail, Instruction::CMD(cmd.to_string())))
 }
 
-fn parse_user<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
-    let (_, user) = kw_with_ws(i, "USER")?;
-    Ok((i, Instruction::USER(user.to_string())))
+pub(crate) fn parse_user<'a, E: ParseError<&'a str>>(
+    i: &'a str,
+) -> IResult<&'a str, Instruction, E> {
+    let (tail, user) = kw_with_ws(i, "USER")?;
+    Ok((tail, Instruction::USER(user.to_string())))
 }
 
-fn parse_workdir<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
-    let (_, workdir) = kw_with_ws(i, "WORKDIR")?;
-    let path = PathBuf::from(workdir);
-    if !path.is_dir() {
-        panic!("Invalid path")
-    }
-    Ok((i, Instruction::WORKDIR(path.to_str().unwrap().to_string())))
+pub(crate) fn parse_workdir<'a, E: ParseError<&'a str>>(
+    i: &'a str,
+) -> IResult<&'a str, Instruction, E> {
+    let (tail, workdir) = kw_with_ws(i, "WORKDIR")?;
+    Ok((tail, Instruction::WORKDIR(workdir.to_string())))
 }
 
-fn parse_copy<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
+pub(crate) fn parse_copy<'a, E: ParseError<&'a str>>(
+    i: &'a str,
+) -> IResult<&'a str, Instruction, E> {
     let (paths, _) = tuple((nom::bytes::complete::tag("COPY"), comsume_ws))(i)?;
-    let (_, (src, dest)) = separated_pair(non_space, tag(" "), till_eol)(paths)?;
+    let (tail, (src, dest)) = separated_pair(non_space, tag(" "), till_eol)(paths)?;
     if !is_glob_pattern(src) || !is_glob_pattern(dest) {
-        panic!("Invalid path format")
+        return Err(nom::Err::Error(E::from_error_kind(
+            i,
+            nom::error::ErrorKind::Verify,
+        )));
     }
 
-    Ok((i, Instruction::COPY(src.to_string(), dest.to_string())))
+    Ok((tail, Instruction::COPY(src.to_string(), dest.to_string())))
 }
 
-fn parse_instruction<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
-    let (i, instruction) = nom::branch::alt((
-        parse_cmd,
-        parse_user,
-        parse_workdir,
-        parse_copy,
-        //parse_run,
-        //parse_env,
-    ))(i)?;
-    Ok((i, instruction))
-}
-
-fn parse_from<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, FromClause, E> {
+pub(crate) fn parse_from<'a, E: ParseError<&'a str>>(
+    i: &'a str,
+) -> IResult<&'a str, FromClause, E> {
     //TODO: parse tag and platform
-    let (_, (_, _, image)) = tuple((tag("FROM"), comsume_ws, till_eol))(i)?;
+    let (tail, (_, _, image)) = tuple((tag("FROM"), comsume_ws, till_eol))(i)?;
     Ok((
-        i,
+        tail,
         FromClause {
             image: image.to_string(),
             tag: None,
@@ -113,27 +115,25 @@ fn parse_from<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, FromCl
     ))
 }
 
-fn parse_instructions<'a, E: ParseError<&'a str>>(
+pub(crate) fn parse_instructions<'a, E: ParseError<&'a str>>(
     i: &'a str,
 ) -> IResult<&'a str, Vec<Instruction>, E> {
-    let (_, instructions) = many0(parse_instruction)(i)?;
-    Ok((i, instructions))
+    many0(nom::branch::alt((
+        parse_cmd,
+        parse_user,
+        parse_workdir,
+        parse_copy,
+        //parse_run,
+        //parse_env,
+    )))(i)
 }
 
-fn parse_baker_file<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, File, E> {
-    //let (i, from) = parse_from(i)?;
-    let ex: Result<(&str, Vec<Instruction>), Err<_>> = parse_instructions::<()>(i);
-    let (i, instructions) = match ex {
-        Ok((i, res)) => (i, res),
-        Err(e) => panic!("Error: {:?}", e),
-    };
-    Ok((
-        i,
-        File {
-            from: FromClause::default(),
-            instructions,
-        },
-    ))
+pub(crate) fn parse_baker_file<'a, E: ParseError<&'a str>>(
+    i: &'a str,
+) -> IResult<&'a str, File, E> {
+    let (insts, from) = parse_from(i)?;
+    let (tail, instructions) = parse_instructions(insts)?;
+    Ok((tail, File { from, instructions }))
 }
 
 #[test]
@@ -183,33 +183,33 @@ fn test_parse_from() {
 
 #[test]
 fn test_parse_baker_file() {
-    let input = "FROM ubuntu\nCMD echo hello\n";
+    let input = "FROM ubuntu\nUSER root\nCMD echo hello";
     let (_, res) = parse_baker_file::<()>(input).unwrap();
     assert_eq!(
         res,
         File {
-            from: FromClause::default(),
-            instructions: vec![Instruction::CMD("echo hello".to_string())]
+            from: FromClause {
+                image: "ubuntu".to_string(),
+                tag: None,
+                platform: None
+            },
+            instructions: vec![
+                Instruction::USER("root".to_string()),
+                Instruction::CMD("echo hello".to_string()),
+            ]
         }
     );
 }
 
 #[test]
-fn test_parse_instruction() {
-    let input = "CMD echo hello\n";
-    let (_, res) = parse_instruction::<()>(input).unwrap();
-    assert_eq!(res, Instruction::CMD("echo hello".to_string()));
-}
-
-#[test]
 fn test_parse_instructions() {
-    let input = "CMD echo hello\nUSER root\n";
+    let input = "USER root\nCMD echo hello";
     let (_, res) = parse_instructions::<()>(input).unwrap();
     assert_eq!(
         res,
         vec![
+            Instruction::USER("root".to_string()),
             Instruction::CMD("echo hello".to_string()),
-            Instruction::USER("root".to_string())
         ]
     );
 }
