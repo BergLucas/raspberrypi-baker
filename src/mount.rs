@@ -1,15 +1,15 @@
-use std::{collections::BTreeMap, fs, thread::sleep, time::Duration};
-
+use crate::images::BakerImage;
 use glob::glob;
 use loopdev::{LoopControl, LoopDevice};
+use path_absolutize::*;
+use std::{collections::BTreeMap, fs, path::PathBuf, thread::sleep, time::Duration};
 use sys_mount::{Mount, Unmount, UnmountFlags};
 use tempdir::TempDir;
 use udev::Device;
 
-use crate::images::BakerImage;
-
 pub struct MountedBakerImage {
     loop_device: LoopDevice,
+    mount_dir: TempDir,
     mount_points: BTreeMap<String, Mount>,
 }
 
@@ -73,8 +73,42 @@ impl MountedBakerImage {
 
         Ok(MountedBakerImage {
             loop_device,
+            mount_dir,
             mount_points,
         })
+    }
+    pub fn labels(&self) -> Vec<String> {
+        self.mount_points.keys().cloned().collect()
+    }
+    pub fn copy(
+        &self,
+        label: &str,
+        source: PathBuf,
+        target: PathBuf,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let mount_point = self
+            .mount_points
+            .get(label)
+            .ok_or("Invalid label")?
+            .target_path();
+
+        let mount_point_string = mount_point
+            .to_str()
+            .ok_or("Failed to convert path to string")?;
+
+        let target_str = target.to_str().ok_or("Failed to convert path to string")?;
+
+        let mounted_target = PathBuf::from(mount_point_string.to_string() + "/" + target_str);
+
+        let absolute_mounted_target = mounted_target.absolutize()?;
+
+        if !absolute_mounted_target.starts_with(mount_point) {
+            return Err("Invalid target path".into());
+        }
+
+        fs::copy(source, absolute_mounted_target)?;
+
+        Ok(())
     }
     pub fn unmount(self) -> Result<(), Box<dyn std::error::Error>> {
         for mount in self.mount_points.values() {
@@ -82,6 +116,8 @@ impl MountedBakerImage {
         }
 
         self.loop_device.detach()?;
+
+        self.mount_dir.close()?;
 
         Ok(())
     }
