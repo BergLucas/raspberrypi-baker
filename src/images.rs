@@ -11,7 +11,7 @@ fn get_images_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
     Ok(crate::get_app_dir()?.join("images"))
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct BakerImage {
     platform: String,
     name: String,
@@ -37,17 +37,6 @@ impl BakerImage {
     }
     pub fn path(&self) -> Result<PathBuf, Box<dyn std::error::Error>> {
         Ok(get_images_dir()?.join(format!("{}.img", self.sha256)))
-    }
-}
-
-impl Clone for BakerImage {
-    fn clone(&self) -> Self {
-        BakerImage {
-            platform: self.platform.clone(),
-            name: self.name.clone(),
-            tag: self.tag.clone(),
-            sha256: self.sha256.clone(),
-        }
     }
 }
 
