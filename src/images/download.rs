@@ -1,4 +1,5 @@
 use std::env;
+use std::fs;
 use std::fs::File;
 use std::io;
 use std::path::PathBuf;
@@ -147,7 +148,7 @@ pub fn list_raspios_images(
 }
 
 pub fn download_image(
-    image_dir: PathBuf,
+    image_path: PathBuf,
     downloadable_image: &DownloadableBakerImage,
 ) -> Result<(), Box<dyn std::error::Error>> {
     let client = reqwest::blocking::Client::builder().timeout(None).build()?;
@@ -167,8 +168,9 @@ pub fn download_image(
     response.copy_to(&mut temp_file)?;
     temp_file.sync_data()?;
 
-    let mut file =
-        File::create(image_dir.join(format!("{}.img", downloadable_image.image().sha256())))?;
+    fs::create_dir_all(image_path.parent().ok_or("Invalid image path")?)?;
+
+    let mut file = File::create(image_path)?;
 
     if filename.ends_with(".zip") {
         let mut archive = zip::ZipArchive::new(&temp_file)?;

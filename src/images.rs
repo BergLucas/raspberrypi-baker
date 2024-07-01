@@ -7,6 +7,10 @@ mod fetch;
 mod parsing;
 mod repository;
 
+fn get_images_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
+    Ok(crate::get_app_dir()?.join("images"))
+}
+
 #[derive(Debug, Serialize, Deserialize)]
 pub struct BakerImage {
     platform: String,
@@ -31,6 +35,9 @@ impl BakerImage {
     pub fn full_name(&self) -> String {
         format!("{}:{}", self.name, self.tag)
     }
+    pub fn path(&self) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        Ok(get_images_dir()?.join(format!("{}.img", self.sha256)))
+    }
 }
 
 impl Clone for BakerImage {
@@ -42,14 +49,6 @@ impl Clone for BakerImage {
             sha256: self.sha256.clone(),
         }
     }
-}
-
-fn get_images_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let images_path = crate::get_app_dir()?.join("images");
-
-    fs::create_dir_all(&images_path)?;
-
-    Ok(images_path)
 }
 
 pub fn list() -> Result<Vec<BakerImage>, Box<dyn std::error::Error>> {
@@ -82,7 +81,7 @@ pub fn pull(
 
             println!("Downloading image: {}", image.full_name());
 
-            download_image(get_images_dir()?, &downloadable_image)?;
+            download_image(image.path()?, &downloadable_image)?;
 
             images.push(image.clone());
 
@@ -98,7 +97,7 @@ pub fn rmi(platform: &str, name: &str, tag: &str) -> Result<(), Box<dyn std::err
 
     for image in list()? {
         if image.platform() == platform && image.name() == name && image.tag() == tag {
-            fs::remove_file(get_images_dir()?.join(format!("{}.img", image.sha256())))?;
+            fs::remove_file(image.path()?)?;
         } else {
             images.push(image.clone());
         }

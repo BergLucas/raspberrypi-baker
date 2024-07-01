@@ -1,3 +1,4 @@
+use std::fs;
 use std::{fs::File, path::PathBuf};
 
 use crate::get_app_dir;
@@ -14,6 +15,12 @@ pub fn read_repository() -> Result<Vec<BakerImage>, Box<dyn std::error::Error>> 
 }
 
 pub fn write_repository(images: &[BakerImage]) -> Result<(), Box<dyn std::error::Error>> {
+    fs::create_dir_all(
+        get_repository_path()?
+            .parent()
+            .ok_or("Invalid repository path")?,
+    )?;
+
     serde_json::to_writer_pretty(File::create(get_repository_path()?)?, images)?;
 
     Ok(())

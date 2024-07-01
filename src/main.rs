@@ -1,5 +1,5 @@
 use clap::{Parser, Subcommand};
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 mod images;
 
@@ -42,13 +42,9 @@ enum Commands {
 }
 
 fn get_app_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
-    let app_dir = dirs::config_local_dir()
+    Ok(dirs::config_local_dir()
         .ok_or("Invalid config local directory")?
-        .join("raspberrypi-baker");
-
-    fs::create_dir_all(&app_dir)?;
-
-    Ok(app_dir)
+        .join("raspberrypi-baker"))
 }
 
 fn main() -> Result<(), Box<dyn std::error::Error>> {
