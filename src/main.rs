@@ -3,6 +3,7 @@ use std::path::PathBuf;
 
 mod images;
 mod mount;
+mod run;
 
 #[derive(Parser, Debug)]
 #[command(version, about, long_about = None)]

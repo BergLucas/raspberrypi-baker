@@ -80,17 +80,21 @@ impl MountedBakerImage {
     pub fn labels(&self) -> Vec<String> {
         self.mount_points.keys().cloned().collect()
     }
+    pub fn get_mount_point(&self, label: &str) -> Result<PathBuf, Box<dyn std::error::Error>> {
+        Ok(self
+            .mount_points
+            .get(label)
+            .ok_or("Invalid label")?
+            .target_path()
+            .to_path_buf())
+    }
     pub fn copy(
         &self,
         label: &str,
         source: PathBuf,
         target: PathBuf,
     ) -> Result<(), Box<dyn std::error::Error>> {
-        let mount_point = self
-            .mount_points
-            .get(label)
-            .ok_or("Invalid label")?
-            .target_path();
+        let mount_point = self.get_mount_point(label)?;
 
         let mount_point_string = mount_point
             .to_str()
