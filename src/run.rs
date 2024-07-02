@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use crate::mount::MountedBakerImage;
+use crate::mount::MountedImage;
 
 pub enum RunEnvironment {
     Chroot,
@@ -89,7 +89,7 @@ impl RunEnvironment {
     }
 }
 
-impl MountedBakerImage {
+impl MountedImage {
     pub fn run(
         &self,
         label: &str,

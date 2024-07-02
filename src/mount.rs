@@ -1,4 +1,3 @@
-use crate::images::BakerImage;
 use glob::glob;
 use loopdev::{LoopControl, LoopDevice};
 use std::{collections::BTreeMap, fs, path::PathBuf, thread::sleep, time::Duration};
@@ -6,22 +5,19 @@ use sys_mount::{Mount, Unmount, UnmountFlags};
 use tempdir::TempDir;
 use udev::Device;
 
-pub struct MountedBakerImage {
+pub struct MountedImage {
     loop_device: LoopDevice,
     mount_dir: TempDir,
     mount_points: BTreeMap<String, Mount>,
 }
 
-impl MountedBakerImage {
-    pub fn new(image: BakerImage) -> Result<MountedBakerImage, Box<dyn std::error::Error>> {
+impl MountedImage {
+    pub fn new(image_path: &PathBuf) -> Result<MountedImage, Box<dyn std::error::Error>> {
         let loop_control = LoopControl::open()?;
 
         let loop_device = loop_control.next_free()?;
 
-        loop_device
-            .with()
-            .part_scan(true)
-            .attach(image.path()?.as_path())?;
+        loop_device.with().part_scan(true).attach(image_path)?;
 
         let loop_device_path = loop_device.path().ok_or("Invalid loop device path")?;
 
@@ -70,7 +66,7 @@ impl MountedBakerImage {
             })
             .collect::<Result<BTreeMap<String, Mount>, Box<dyn std::error::Error>>>()?;
 
-        Ok(MountedBakerImage {
+        Ok(MountedImage {
             loop_device,
             mount_dir,
             mount_points,

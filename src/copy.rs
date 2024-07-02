@@ -1,9 +1,9 @@
 use std::{fs, path::PathBuf};
 
-use crate::mount::MountedBakerImage;
+use crate::mount::MountedImage;
 use path_absolutize::*;
 
-impl MountedBakerImage {
+impl MountedImage {
     pub fn copy(
         &self,
         label: &str,
