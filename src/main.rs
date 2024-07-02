@@ -1,6 +1,7 @@
 use clap::{Parser, Subcommand};
 use std::path::PathBuf;
 
+mod copy;
 mod images;
 mod mount;
 mod run;
