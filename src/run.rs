@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{collections::HashMap, path::PathBuf};
 
 use crate::mount::MountedImage;
 
@@ -12,17 +12,18 @@ impl RunEnvironment {
     pub fn run(
         &self,
         mount_point: &PathBuf,
+        environment_variables: &HashMap<String, String>,
         user: &str,
         working_dir: &str,
-        command: Vec<&str>,
+        command: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mount_point_str = mount_point
             .to_str()
             .ok_or("Failed to convert path to string")?;
 
-        let command_str = command
-            .into_iter()
-            .map(|arg| format!("\"{}\"", arg))
+        let environment_variables_str = environment_variables
+            .iter()
+            .map(|(key, value)| format!("{}={}", key, value))
             .collect::<Vec<String>>()
             .join(" ");
 
@@ -34,9 +35,10 @@ impl RunEnvironment {
                     .arg("-")
                     .arg(user)
                     .arg("-c")
-                    .arg(format!("cd {} && sh -c \"{}\"", working_dir, command_str))
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
+                    .arg(format!(
+                        "cd '{}' && sh -c '{}; {}'",
+                        working_dir, environment_variables_str, command,
+                    ))
                     .status()?;
 
                 if !status.success() {
@@ -45,17 +47,17 @@ impl RunEnvironment {
             }
             RunEnvironment::SystemdNspawn => {
                 let status = std::process::Command::new("systemd-nspawn")
+                    .arg("-q")
                     .arg("-D")
                     .arg(mount_point_str)
                     .arg("-u")
                     .arg(user)
-                    .arg("--chdir")
-                    .arg(working_dir)
                     .arg("sh")
                     .arg("-c")
-                    .arg(command_str)
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
+                    .arg(format!(
+                        "cd '{}' && sh -c '{}; {}'",
+                        working_dir, environment_variables_str, command,
+                    ))
                     .status()?;
 
                 if !status.success() {
@@ -64,19 +66,19 @@ impl RunEnvironment {
             }
             RunEnvironment::SystemdVmspawn(kernel_path) => {
                 let status = std::process::Command::new("systemd-vmspawn")
+                    .arg("-q")
                     .arg("-D")
                     .arg(mount_point_str)
                     .arg("-u")
                     .arg(user)
-                    .arg("--chdir")
-                    .arg(working_dir)
                     .arg("--linux")
                     .arg(kernel_path.as_os_str())
                     .arg("sh")
                     .arg("-c")
-                    .arg(command_str)
-                    .stdout(std::process::Stdio::null())
-                    .stderr(std::process::Stdio::null())
+                    .arg(format!(
+                        "cd '{}' && sh -c '{}; {}'",
+                        working_dir, environment_variables_str, command,
+                    ))
                     .status()?;
 
                 if !status.success() {
@@ -94,13 +96,20 @@ impl MountedImage {
         &self,
         label: &str,
         environment: RunEnvironment,
+        environment_variables: &HashMap<String, String>,
         user: &str,
         working_dir: &str,
-        command: Vec<&str>,
+        command: &str,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mount_point = self.get_mount_point(label)?;
 
-        environment.run(&mount_point, user, working_dir, command)?;
+        environment.run(
+            &mount_point,
+            environment_variables,
+            user,
+            working_dir,
+            command,
+        )?;
 
         Ok(())
     }
