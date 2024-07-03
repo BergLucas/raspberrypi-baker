@@ -21,11 +21,15 @@ impl RunEnvironment {
             .to_str()
             .ok_or("Failed to convert path to string")?;
 
-        let environment_variables_str = environment_variables
+        let mut environment_variables_str = environment_variables
             .iter()
             .map(|(key, value)| format!("{}={}", key, value))
             .collect::<Vec<String>>()
             .join(" ");
+
+        if !environment_variables_str.is_empty() {
+            environment_variables_str.push_str("; ");
+        }
 
         match &self {
             RunEnvironment::Chroot => {
@@ -36,7 +40,7 @@ impl RunEnvironment {
                     .arg(user)
                     .arg("-c")
                     .arg(format!(
-                        "cd '{}' && sh -c '{}; {}'",
+                        "cd '{}' && sh -c '{}{}'",
                         working_dir, environment_variables_str, command,
                     ))
                     .status()?;
@@ -55,7 +59,7 @@ impl RunEnvironment {
                     .arg("sh")
                     .arg("-c")
                     .arg(format!(
-                        "cd '{}' && sh -c '{}; {}'",
+                        "cd '{}' && sh -c '{}{}'",
                         working_dir, environment_variables_str, command,
                     ))
                     .status()?;
@@ -76,7 +80,7 @@ impl RunEnvironment {
                     .arg("sh")
                     .arg("-c")
                     .arg(format!(
-                        "cd '{}' && sh -c '{}; {}'",
+                        "cd '{}' && sh -c '{}{}'",
                         working_dir, environment_variables_str, command,
                     ))
                     .status()?;
