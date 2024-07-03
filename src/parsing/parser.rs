@@ -4,10 +4,11 @@ use glob::glob;
 use nom::{
     branch::alt,
     bytes::complete::{tag, take_till, take_while},
+    character::complete::{space0, space1},
     combinator::opt,
     error::ParseError,
     multi::many0,
-    sequence::{separated_pair, tuple},
+    sequence::{preceded, separated_pair, tuple},
     Err, IResult,
 };
 #[derive(Debug, Clone, PartialEq)]
@@ -39,8 +40,8 @@ impl Eq for BakerFile {}
 ///
 /// Utility functions
 ///
-fn comsume_ws<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
-    take_while(|c| c == ' ')(i)
+fn comsume_ws<'a, E: ParseError<&'a str>>(input: &'a str) -> IResult<&'a str, &'a str, E> {
+    space0(input)
 }
 
 fn kw_with_ws<'a, E: ParseError<&'a str>>(i: &'a str, kw: &'a str) -> IResult<&'a str, &'a str, E> {
@@ -67,6 +68,10 @@ fn till_eol<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str,
 
 fn consume_eol<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
     let (tail, _) = alt((tag("\r\n"), tag("\n")))(i)?;
+    Ok((tail, ""))
+}
+fn consume_blank_line<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
+    let (tail, _) = tuple((comsume_ws, opt(consume_eol)))(i)?;
     Ok((tail, ""))
 }
 
@@ -153,17 +158,25 @@ fn parse_env<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruc
     Ok((tail, Instruction::ENV(envs)))
 }
 
+fn parse_instruction<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
+    let (tail, (_, instruction)) = tuple((
+        consume_blank_line,
+        nom::branch::alt((
+            parse_cmd,
+            parse_user,
+            parse_workdir,
+            parse_copy,
+            parse_run,
+            parse_env,
+        )),
+    ))(i)?;
+    Ok((tail, instruction))
+}
+
 fn parse_instructions<'a, E: ParseError<&'a str>>(
     i: &'a str,
 ) -> IResult<&'a str, Vec<Instruction>, E> {
-    many0(nom::branch::alt((
-        parse_cmd,
-        parse_user,
-        parse_workdir,
-        parse_copy,
-        parse_run,
-        parse_env,
-    )))(i)
+    many0(parse_instruction)(i)
 }
 
 pub fn parse_baker_file<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, BakerFile, E> {
@@ -176,10 +189,7 @@ pub fn parse_baker_file<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a s
 fn test_parse_copy() {
     let input = "COPY /src/* /dest\n";
     let (_, res) = parse_copy::<()>(input).unwrap();
-    assert_eq!(
-        res,
-        Instruction::COPY("/src/*".to_string(), "/dest".to_string())
-    );
+    assert_eq!(res, Instruction::COPY("/src/*".to_string(), "/dest".into()));
 }
 
 #[test]
@@ -253,7 +263,7 @@ fn test_parse_from_no_options() {
 
 #[test]
 fn test_parse_baker_file() {
-    let input = "FROM ubuntu\nUSER root\nCMD echo hello";
+    let input = "FROM ubuntu\nUSER root\n   \nCMD echo hello";
     let (_, res) = parse_baker_file::<()>(input).unwrap();
     assert_eq!(
         res,
