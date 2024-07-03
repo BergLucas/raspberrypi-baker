@@ -93,7 +93,7 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             match tag {
                 Some(nametag) => match nametag.split(":").collect::<Vec<&str>>().as_slice() {
                     [name, tag] => {
-                        images::build(filepath, Some(file.to_string()), Some(tag.to_string()))
+                        images::build(filepath, Some(name.to_string()), Some(tag.to_string()))
                     }
                     _ => Err("Invalid image name".into()),
                 },
