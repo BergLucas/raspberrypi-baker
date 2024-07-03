@@ -1,7 +1,7 @@
 use crate::{
     images::{download::download_image, fetch::fetch_baker_images},
     mount::MountedImage,
-    parsing::parser::{self, BakerFile},
+    parsing::parser,
 };
 use glob::glob;
 use serde::{Deserialize, Serialize};
@@ -13,7 +13,6 @@ use std::{
 
 mod download;
 mod fetch;
-mod hash;
 mod repository;
 
 fn get_images_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
@@ -170,7 +169,7 @@ pub fn build(
     // Unmount image and save it
     mounted.unmount()?;
     let img_dir = get_images_dir()?;
-    let digest = hash::sha256_digest(&tmp_path)?;
+    let digest = sha256::try_digest(&tmp_path)?;
     let dest_path = img_dir.join(digest.clone() + ".img");
     fs::copy(&tmp_path, dest_path)?;
 
