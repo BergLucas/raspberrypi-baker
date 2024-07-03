@@ -15,14 +15,14 @@ pub struct FromClause {
     pub platform: Option<String>,
 }
 #[derive(Debug, Clone, PartialEq)]
-pub struct File {
+pub struct BakerFile {
     pub from: FromClause,
     pub instructions: Vec<Instruction>,
 }
 
 impl Eq for Instruction {}
 impl Eq for FromClause {}
-impl Eq for File {}
+impl Eq for BakerFile {}
 
 use nom::{
     branch::alt,
@@ -65,34 +65,31 @@ fn till_eol<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str,
     Ok((tail, line))
 }
 
+fn consume_eol<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
+    let (tail, _) = alt((tag("\r\n"), tag("\n")))(i)?;
+    Ok((tail, ""))
+}
+
 ///
 /// Parsers
 ///
 
-pub(crate) fn parse_cmd<'a, E: ParseError<&'a str>>(
-    i: &'a str,
-) -> IResult<&'a str, Instruction, E> {
+fn parse_cmd<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
     let (tail, cmd) = kw_with_ws(i, "CMD")?;
     Ok((tail, Instruction::CMD(cmd.to_string())))
 }
 
-pub(crate) fn parse_user<'a, E: ParseError<&'a str>>(
-    i: &'a str,
-) -> IResult<&'a str, Instruction, E> {
+fn parse_user<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
     let (tail, user) = kw_with_ws(i, "USER")?;
     Ok((tail, Instruction::USER(user.to_string())))
 }
 
-pub(crate) fn parse_workdir<'a, E: ParseError<&'a str>>(
-    i: &'a str,
-) -> IResult<&'a str, Instruction, E> {
+fn parse_workdir<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
     let (tail, workdir) = kw_with_ws(i, "WORKDIR")?;
     Ok((tail, Instruction::WORKDIR(workdir.to_string())))
 }
 
-pub(crate) fn parse_copy<'a, E: ParseError<&'a str>>(
-    i: &'a str,
-) -> IResult<&'a str, Instruction, E> {
+fn parse_copy<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
     let (paths, _) = tuple((nom::bytes::complete::tag("COPY"), comsume_ws))(i)?;
     let (tail, (src, dest)) = separated_pair(non_space, tag(" "), till_eol)(paths)?;
     if !is_glob_pattern(src) || !is_glob_pattern(&dest) {
@@ -105,15 +102,9 @@ pub(crate) fn parse_copy<'a, E: ParseError<&'a str>>(
     Ok((tail, Instruction::COPY(src.to_string(), dest.to_string())))
 }
 
-pub(crate) fn parse_run<'a, E: ParseError<&'a str>>(
-    i: &'a str,
-) -> IResult<&'a str, Instruction, E> {
+fn parse_run<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
     let (tail, run) = kw_with_ws(i, "RUN")?;
     Ok((tail, Instruction::RUN(run.to_string())))
-}
-fn consume_eol<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
-    let (tail, _) = alt((tag("\r\n"), tag("\n")))(i)?;
-    Ok((tail, ""))
 }
 
 fn parse_tag<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str, E> {
@@ -121,9 +112,7 @@ fn parse_tag<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, &'a str
     Ok((tail, tag))
 }
 
-pub(crate) fn parse_from<'a, E: ParseError<&'a str>>(
-    i: &'a str,
-) -> IResult<&'a str, FromClause, E> {
+fn parse_from<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, FromClause, E> {
     let (tail, (_, _, line)) = tuple((tag("FROM"), comsume_ws, till_eol))(i)?;
     let (img, pt) = opt(tuple((
         tag("--platform"),
@@ -150,9 +139,7 @@ pub(crate) fn parse_from<'a, E: ParseError<&'a str>>(
     ))
 }
 
-pub(crate) fn parse_env<'a, E: ParseError<&'a str>>(
-    i: &'a str,
-) -> IResult<&'a str, Instruction, E> {
+fn parse_env<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
     let (tail, (_, _, envs)) = tuple((tag("ENV"), comsume_ws, till_eol))(i)?;
     let envs = envs
         .split_whitespace()
@@ -166,7 +153,7 @@ pub(crate) fn parse_env<'a, E: ParseError<&'a str>>(
     Ok((tail, Instruction::ENV(envs)))
 }
 
-pub(crate) fn parse_instructions<'a, E: ParseError<&'a str>>(
+fn parse_instructions<'a, E: ParseError<&'a str>>(
     i: &'a str,
 ) -> IResult<&'a str, Vec<Instruction>, E> {
     many0(nom::branch::alt((
@@ -181,10 +168,10 @@ pub(crate) fn parse_instructions<'a, E: ParseError<&'a str>>(
 
 pub(crate) fn parse_baker_file<'a, E: ParseError<&'a str>>(
     i: &'a str,
-) -> IResult<&'a str, File, E> {
+) -> IResult<&'a str, BakerFile, E> {
     let (insts, from) = parse_from(i)?;
     let (tail, instructions) = parse_instructions(insts)?;
-    Ok((tail, File { from, instructions }))
+    Ok((tail, BakerFile { from, instructions }))
 }
 
 #[test]
@@ -272,7 +259,7 @@ fn test_parse_baker_file() {
     let (_, res) = parse_baker_file::<()>(input).unwrap();
     assert_eq!(
         res,
-        File {
+        BakerFile {
             from: FromClause {
                 image: "ubuntu".to_string(),
                 tag: None,
