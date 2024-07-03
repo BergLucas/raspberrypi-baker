@@ -11,7 +11,7 @@ use scraper::{ElementRef, Html};
 use serde::{Deserialize, Serialize};
 use url::Url;
 
-pub struct ApacheFile {
+struct ApacheFile {
     name: String,
     last_modified: NaiveDateTime,
     is_directory: bool,
