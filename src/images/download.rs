@@ -4,12 +4,88 @@ use std::fs::File;
 use std::io;
 use std::path::PathBuf;
 
-use crate::images::parsing;
 use crate::images::BakerImage;
 use chrono::NaiveDateTime;
 use regex::Regex;
+use scraper::{ElementRef, Html};
 use serde::{Deserialize, Serialize};
 use url::Url;
+
+pub struct ApacheFile {
+    name: String,
+    last_modified: NaiveDateTime,
+    is_directory: bool,
+}
+
+impl ApacheFile {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+    pub fn last_modified(&self) -> NaiveDateTime {
+        self.last_modified
+    }
+    pub fn is_directory(&self) -> bool {
+        self.is_directory
+    }
+}
+
+fn handle_element(element: ElementRef) -> Result<Option<ApacheFile>, Box<dyn std::error::Error>> {
+    let mut children = element.children().filter_map(ElementRef::wrap);
+
+    if element.children().count() != 5 {
+        return Ok(None);
+    }
+
+    let filetype = children
+        .next()
+        .ok_or("Missing file element")?
+        .select(&scraper::Selector::parse("img").unwrap())
+        .next()
+        .ok_or("Missing img element")?
+        .value()
+        .attr("alt")
+        .ok_or("Missing alt attribute")?;
+
+    let is_directory = match filetype {
+        "[DIR]" => true,
+        "[   ]" => false,
+        _ => return Ok(None),
+    };
+
+    let name = children
+        .next()
+        .ok_or("Missing name element")?
+        .select(&scraper::Selector::parse("a").unwrap())
+        .next()
+        .ok_or("Missing href element")?
+        .inner_html()
+        .trim_end_matches("/")
+        .to_string();
+
+    let last_modified = NaiveDateTime::parse_from_str(
+        children
+            .next()
+            .ok_or("Missing date element")?
+            .inner_html()
+            .trim(),
+        "%Y-%m-%d %H:%M",
+    )?;
+
+    Ok(Some(ApacheFile {
+        name,
+        last_modified,
+        is_directory,
+    }))
+}
+
+fn parse_apache_directory_listing(
+    body: &str,
+) -> Result<Vec<ApacheFile>, Box<dyn std::error::Error>> {
+    Html::parse_document(body)
+        .select(&scraper::Selector::parse("tr").unwrap())
+        .filter_map(|element| handle_element(element).transpose())
+        .collect()
+}
 
 fn list_raspios_image_names(
     registry: &str,
@@ -20,7 +96,7 @@ fn list_raspios_image_names(
     ))?
     .text()?;
 
-    Ok(parsing::parse_apache_directory_listing(&body)?
+    Ok(parse_apache_directory_listing(&body)?
         .into_iter()
         .filter(|file| file.is_directory())
         .map(|file| (file.name().to_string(), file.last_modified()))
@@ -30,7 +106,7 @@ fn list_raspios_image_names(
 fn list_raspios_repositories() -> Result<Vec<(String, NaiveDateTime)>, Box<dyn std::error::Error>> {
     let body = reqwest::blocking::get("https://downloads.raspberrypi.org/")?.text()?;
 
-    Ok(parsing::parse_apache_directory_listing(&body)?
+    Ok(parse_apache_directory_listing(&body)?
         .into_iter()
         .filter(|file| file.is_directory() && file.name().starts_with("raspios"))
         .map(|file| (file.name().to_string(), file.last_modified()))
@@ -62,7 +138,7 @@ fn get_raspios_images(
     ))?
     .text()?;
 
-    let files: Vec<String> = parsing::parse_apache_directory_listing(&body)?
+    let files: Vec<String> = parse_apache_directory_listing(&body)?
         .into_iter()
         .filter(|file| !file.is_directory())
         .map(|file| file.name().to_string())

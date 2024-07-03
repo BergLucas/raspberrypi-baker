@@ -4,7 +4,6 @@ use std::{fs, path::PathBuf};
 
 mod download;
 mod fetch;
-mod parsing;
 mod repository;
 
 fn get_images_dir() -> Result<PathBuf, Box<dyn std::error::Error>> {
