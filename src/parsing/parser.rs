@@ -1,8 +1,20 @@
+use std::path::PathBuf;
+
+use glob::glob;
+use nom::{
+    branch::alt,
+    bytes::complete::{tag, take_till, take_while},
+    combinator::opt,
+    error::ParseError,
+    multi::many0,
+    sequence::{separated_pair, tuple},
+    Err, IResult,
+};
 #[derive(Debug, Clone, PartialEq)]
 pub enum Instruction {
     ENV(Vec<(String, String)>),
     RUN(String),
-    COPY(String, String),
+    COPY(String, PathBuf),
     WORKDIR(String),
     USER(String),
     CMD(String),
@@ -23,18 +35,6 @@ pub struct BakerFile {
 impl Eq for Instruction {}
 impl Eq for FromClause {}
 impl Eq for BakerFile {}
-
-use nom::{
-    branch::alt,
-    bytes::complete::{tag, take_till, take_while},
-    combinator::opt,
-    error::ParseError,
-    multi::many0,
-    sequence::{separated_pair, tuple},
-    Err, IResult,
-};
-
-use glob::glob;
 
 ///
 /// Utility functions
@@ -99,7 +99,7 @@ fn parse_copy<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instru
         )));
     }
 
-    Ok((tail, Instruction::COPY(src.to_string(), dest.to_string())))
+    Ok((tail, Instruction::COPY(src.to_string(), dest.into())))
 }
 
 fn parse_run<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, Instruction, E> {
@@ -166,9 +166,7 @@ fn parse_instructions<'a, E: ParseError<&'a str>>(
     )))(i)
 }
 
-pub(crate) fn parse_baker_file<'a, E: ParseError<&'a str>>(
-    i: &'a str,
-) -> IResult<&'a str, BakerFile, E> {
+pub fn parse_baker_file<'a, E: ParseError<&'a str>>(i: &'a str) -> IResult<&'a str, BakerFile, E> {
     let (insts, from) = parse_from(i)?;
     let (tail, instructions) = parse_instructions(insts)?;
     Ok((tail, BakerFile { from, instructions }))

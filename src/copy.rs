@@ -7,8 +7,8 @@ impl MountedImage {
     pub fn copy(
         &self,
         label: &str,
-        source: PathBuf,
-        target: PathBuf,
+        source: &PathBuf,
+        target: &PathBuf,
     ) -> Result<(), Box<dyn std::error::Error>> {
         let mount_point = self.get_mount_point(label)?;
 

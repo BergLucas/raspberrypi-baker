@@ -81,6 +81,25 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
                 _ => Err("Invalid image name".into()),
             }
         }
-        _ => unimplemented!(),
+        Commands::Build {
+            path,
+            file,
+            output,
+            tag,
+        } => {
+            let file = file.unwrap_or("Bakerfile".to_string());
+            let filepath = PathBuf::from(&path).join(&file);
+
+            match tag {
+                Some(nametag) => match nametag.split(":").collect::<Vec<&str>>().as_slice() {
+                    [name, tag] => {
+                        images::build(filepath, Some(file.to_string()), Some(tag.to_string()))
+                    }
+                    _ => Err("Invalid image name".into()),
+                },
+                None => images::build(filepath, None, None),
+            }
+        }
+        Commands::Burn { device_file, image } => unimplemented!(),
     }
 }
