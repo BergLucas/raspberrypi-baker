@@ -1570,6 +1570,7 @@ dependencies = [
  "dirs",
  "glob",
  "loopdev-3",
+ "nom",
  "path-absolutize",
  "regex",
  "reqwest",
